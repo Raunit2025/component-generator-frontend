@@ -1,14 +1,14 @@
 // src/app/playground/page.tsx
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Frame from 'react-frame-component';
 import React from 'react';
 // @ts-ignore (Babel is loaded from a script tag and won't have types)
 import { transform } from '@babel/standalone';
-import api from '../../lib/axios'; // Use our custom api client
-import axios from 'axios'; // <-- Import axios for the type guard
+import api from '../../lib/axios';
+import axios from 'axios';
 import JSZip from 'jszip';
 
 // --- Interfaces ---
@@ -25,12 +25,12 @@ interface Session {
   chatHistory: ChatMessage[];
 }
 
-// --- Component Preview ---
+// --- FINAL ROBUST Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
   try {
-    // Step 1: Transpile the JSX/TSX code into plain JavaScript.
-    // We no longer need the 'transform-modules-commonjs' plugin.
-    const transformedResult = transform(jsxCode, {
+    const rawCode = jsxCode.trim();
+
+    const transformedResult = transform(rawCode, {
       presets: ['react', 'typescript'],
       filename: 'component.tsx',
     });
@@ -39,18 +39,15 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
       throw new Error("Babel transformation returned empty code.");
     }
     
-    // The transpiled code will look something like:
-    // "const GeneratedComponent = () => { return React.createElement(...) }; GeneratedComponent;"
     const transformedCode = transformedResult.code;
     
-    // Step 2: Evaluate the code in a sandboxed function to get the component.
-    // We pass React into the function's scope. The last line of the code
-    // is the component name itself, which becomes the return value.
-    const factory = new Function('React', `return (()=>{${transformedCode}})()`);
+    // THE FIX: We execute the transpiled code, which defines GeneratedComponent,
+    // and then explicitly return it. This is the most reliable method.
+    const factory = new Function('React', `${transformedCode}\nreturn GeneratedComponent;`);
     const ComponentToRender = factory(React);
 
     if (!ComponentToRender || (typeof ComponentToRender !== 'function' && typeof ComponentToRender !== 'object')) {
-        return <div style={{ color: '#f97316', padding: '1rem', fontFamily: 'sans-serif' }}>The AI-generated code did not return a valid React component.</div>;
+        throw new Error('The evaluated code did not produce a valid React component.');
     }
     
     return (
@@ -60,7 +57,15 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
       </>
     );
   } catch (error) {
-    console.error("Error rendering component:", error);
+    // --- DETAILED DEBUGGING LOGS ---
+    console.error("========================================");
+    console.error("==== ERROR RENDERING COMPONENT PREVIEW ====");
+    console.error("========================================");
+    console.log("RAW JSX CODE RECEIVED:\n", jsxCode);
+    console.error("ERROR OBJECT:", error);
+    console.error("========================================");
+    // ---------------------------------
+    
     return <div style={{ color: '#ef4444', padding: '1rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{String(error)}</div>;
   }
 };
@@ -73,9 +78,8 @@ export default function PlaygroundPage() {
     const [prompt, setPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
-    const [copyStatus, setCopyStatus] = useState(''); // For copy feedback
+    const [copyStatus, setCopyStatus] = useState('');
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -85,8 +89,7 @@ export default function PlaygroundPage() {
         }
     };
 
-    // This needs to be memoized or moved outside to avoid being redeclared on every render
-    const handleNewSession = async (setActive = true) => {
+    const handleNewSession = useCallback(async (setActive = true) => {
         const accessToken = localStorage.getItem('accessToken');
         try {
             const response = await api.post('/sessions', {}, {
@@ -98,7 +101,7 @@ export default function PlaygroundPage() {
         } catch (err) {
             console.error('Failed to create new session:', err);
         }
-    };
+    }, []);
 
     useEffect(() => {
         const fetchSessions = async () => {
@@ -111,16 +114,14 @@ export default function PlaygroundPage() {
                 const response = await api.get('/sessions', {
                     headers: { Authorization: `Bearer ${accessToken}` },
                 });
-                setSessions(response.data);
-                if (response.data.length > 0) {
+                if (response.data && response.data.length > 0) {
+                    setSessions(response.data);
                     setActiveSession(response.data[0]);
                 } else {
-                  // If no sessions, create one
-                  await handleNewSession(false);
+                  await handleNewSession(true);
                 }
-            } catch (err: unknown) { // <-- Correctly typed as unknown
+            } catch (err: unknown) {
                 console.error('Failed to fetch sessions:', err);
-                // Use axios type guard to safely access properties
                  if (axios.isAxiosError(err) && err.response?.status === 401) {
                     router.push('/auth/login');
                 }
@@ -129,7 +130,7 @@ export default function PlaygroundPage() {
             }
         };
         fetchSessions();
-    }, [router]);
+    }, [router, handleNewSession]);
 
     useEffect(() => {
         scrollToBottom();
@@ -161,9 +162,8 @@ export default function PlaygroundPage() {
             const updatedSession: Session = response.data;
             setActiveSession(updatedSession);
             setSessions(sessions.map(s => s._id === updatedSession._id ? updatedSession : s));
-        } catch (err: unknown) { // <-- Correctly typed as unknown
+        } catch (err: unknown) {
             console.error('Failed to generate code:', err);
-            // Revert optimistic UI update on error
             setActiveSession(prev => prev ? { ...prev, chatHistory: prev.chatHistory.slice(0, -1) } : null);
         } finally {
             setIsGenerating(false);
@@ -194,7 +194,6 @@ export default function PlaygroundPage() {
         link.click();
         document.body.removeChild(link);
     };
-
 
     if (loading) {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
