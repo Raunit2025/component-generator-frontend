@@ -16,7 +16,6 @@ import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, Palette, X, Pan
 
 
 // --- Interfaces ---
-// ... (keep existing interfaces)
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -31,7 +30,6 @@ interface Session {
 }
 
 // --- Component Preview ---
-// ... (keep existing ComponentPreview component)
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
   const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -103,7 +101,6 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
 
 
 // --- Property Panel ---
-// ... (keep existing PropertyPanel component)
 const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selectedElement: any, onDeselect: () => void, onStyleChange: (prompt: string) => void }) => {
     if (!selectedElement) {
         return (
@@ -148,7 +145,6 @@ const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selecte
 
 // --- Main Page Component ---
 export default function PlaygroundPage() {
-    // ... (keep existing state declarations)
     const [sessions, setSessions] = useState<Session[]>([]);
     const [activeSession, setActiveSession] = useState<Session | null>(null);
     const [prompt, setPrompt] = useState('');
@@ -157,7 +153,7 @@ export default function PlaygroundPage() {
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
     const [copyStatus, setCopyStatus] = useState('');
     const [fullscreenView, setFullscreenView] = useState<'none' | 'preview' | 'code'>('none');
-    const [isExitingFullscreen, setIsExitingFullscreen] = useState(false); // New state for exit animation
+    const [isExitingFullscreen, setIsExitingFullscreen] = useState(false);
     const [activeSideTab, setActiveSideTab] = useState<'chat' | 'properties'>('chat');
     const [selectedElement, setSelectedElement] = useState<any>(null);
     const [isSessionLoading, setIsSessionLoading] = useState(false);
@@ -165,8 +161,7 @@ export default function PlaygroundPage() {
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
-    
-    // ... (keep ALL existing functions like handleNewSession, handleAPIMessage, fetchSessions, etc.)
+
     const scrollToBottom = () => {
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -360,21 +355,18 @@ export default function PlaygroundPage() {
         }
     };
 
-    // --- NEW: Function to handle fullscreen toggling with animation ---
     const handleFullscreenToggle = (view: 'preview' | 'code') => {
-        if (fullscreenView === view) { // We are exiting fullscreen
+        if (fullscreenView === view) {
             setIsExitingFullscreen(true);
             setTimeout(() => {
                 setFullscreenView('none');
                 setIsExitingFullscreen(false);
-            }, 200); // Animation duration
-        } else { // We are entering fullscreen
+            }, 200);
+        } else {
             setFullscreenView(view);
         }
     };
-
-    // ... (keep if/else blocks and other JSX the same, but update the FullscreenButton component and the main return structure)
-    // The FullscreenButton component now calls the new handler
+    
     const FullscreenButton = ({ view }: { view: 'preview' | 'code' }) => (
         <button
             onClick={() => handleFullscreenToggle(view)}
@@ -389,7 +381,6 @@ export default function PlaygroundPage() {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
     }
     
-    // The panel definitions are simplified and no longer contain fullscreen logic
     const previewPanel = (
         <div className="flex-1 flex flex-col bg-gray-800 rounded-lg shadow h-full">
             <div className="flex justify-between items-center p-4 border-b border-gray-700">
@@ -454,7 +445,7 @@ export default function PlaygroundPage() {
                 </button>
             </div>
             {activeSideTab === 'chat' ? (
-                <div key="chat-panel" className="flex flex-col flex-1 animate-fadeIn">
+                <div key="chat-panel" className="flex flex-col flex-1 animate-fadeIn min-h-0">
                     <div ref={chatContainerRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
                         {activeSession?.chatHistory.map((msg, index) => (
                             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -485,7 +476,7 @@ export default function PlaygroundPage() {
                     </form>
                 </div>
             ) : (
-                 <div key="properties-panel" className="flex-1 animate-fadeIn">
+                 <div key="properties-panel" className="flex-1 animate-fadeIn overflow-y-auto">
                     <PropertyPanel 
                         selectedElement={selectedElement} 
                         onDeselect={() => setSelectedElement(null)}
@@ -554,7 +545,6 @@ export default function PlaygroundPage() {
                 </main>
             </div>
             
-            {/* NEW: Fullscreen overlays rendered on top */}
             {fullscreenView === 'preview' && (
                 <div className={`fixed inset-0 z-50 p-4 ${isExitingFullscreen ? 'animate-zoomOut' : 'animate-zoomIn'}`}>
                     {previewPanel}
