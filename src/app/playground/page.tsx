@@ -12,7 +12,7 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2 } from 'lucide-react'; // FIX: Import Trash2 icon
+import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, Palette, X } from 'lucide-react';
 
 
 // --- Interfaces ---
@@ -31,38 +31,96 @@ interface Session {
 
 // --- Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
-  try {
-    const rawCode = jsxCode.trim();
+  const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const componentRef = useRef<HTMLDivElement>(null);
 
-    const transformedResult = transform(rawCode, {
-      presets: ['react', 'typescript'],
-      filename: 'component.tsx',
-    });
+  useEffect(() => {
+    try {
+      const rawCode = jsxCode.trim();
+      const transformedResult = transform(rawCode, {
+        presets: ['react', 'typescript'],
+        filename: 'component.tsx',
+      });
+      if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
+      
+      const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
+      const Component = factory(React);
 
-    if (!transformedResult?.code) {
-      throw new Error("Babel transformation returned empty code.");
+      if (!Component || (typeof Component !== 'function' && typeof Component !== 'object')) {
+          throw new Error('The evaluated code did not produce a valid React component.');
+      }
+      setComponentToRender(() => Component);
+      setError(null);
+    } catch (err) {
+      console.error("Error rendering component preview:", err);
+      setError(String(err));
+      setComponentToRender(null);
     }
-    
-    const transformedCode = transformedResult.code;
-    
-    const factory = new Function('React', `${transformedCode}\nreturn GeneratedComponent;`);
-    const ComponentToRender = factory(React);
+  }, [jsxCode]);
 
-    if (!ComponentToRender || (typeof ComponentToRender !== 'function' && typeof ComponentToRender !== 'object')) {
-        throw new Error('The evaluated code did not produce a valid React component.');
+  useEffect(() => {
+    if (componentRef.current) {
+      componentRef.current.querySelectorAll('*').forEach((el, index) => {
+        const uniqueId = `element-${index}`;
+        (el as HTMLElement).dataset.id = uniqueId;
+        el.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const existingStyle = window.getComputedStyle(el);
+          const styles = {
+            backgroundColor: existingStyle.backgroundColor,
+            color: existingStyle.color,
+            fontSize: existingStyle.fontSize,
+            padding: existingStyle.padding,
+          };
+          window.parent.postMessage({
+            type: 'element-click',
+            elementId: uniqueId,
+            tagName: (el as HTMLElement).tagName,
+            styles: styles,
+          }, '*');
+        });
+      });
     }
-    
-    return (
-      <>
-        <style>{cssCode}</style>
-        <ComponentToRender />
-      </>
-    );
-  } catch (error) {
-    console.error("Error rendering component preview:", error);
-    console.log("Raw JSX code received:", jsxCode);
-    return <div style={{ color: '#ef4444', padding: '1rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{String(error)}</div>;
+  }, [ComponentToRender]);
+
+
+  if (error) {
+    return <div style={{ color: '#ef4444', padding: '1rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{error}</div>;
   }
+
+  return (
+    <>
+      <style>{cssCode}</style>
+      {ComponentToRender && <div ref={componentRef}><ComponentToRender /></div>}
+    </>
+  );
+};
+
+
+// --- Property Panel ---
+const PropertyPanel = ({ selectedElement, onDeselect }: { selectedElement: any, onDeselect: () => void }) => {
+    if (!selectedElement) {
+        return (
+            <div className="p-4 text-gray-400">
+                Click an element in the preview to edit its properties.
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-4">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Editing &lt;{selectedElement.tagName.toLowerCase()}&gt;</h3>
+                <button onClick={onDeselect} title="Deselect Element" className="p-1 rounded-full hover:bg-gray-700">
+                    <X size={18} />
+                </button>
+            </div>
+            {/* TODO: Add property controls here */}
+            <p className="text-sm text-gray-500">Property controls will go here.</p>
+        </div>
+    );
 };
 
 
@@ -76,6 +134,8 @@ export default function PlaygroundPage() {
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
     const [copyStatus, setCopyStatus] = useState('');
     const [fullscreenView, setFullscreenView] = useState<'none' | 'preview' | 'code'>('none');
+    const [activeSideTab, setActiveSideTab] = useState<'chat' | 'properties'>('chat');
+    const [selectedElement, setSelectedElement] = useState<any>(null);
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -129,6 +189,21 @@ export default function PlaygroundPage() {
         };
         fetchSessions();
     }, [router, handleNewSession]);
+    
+    useEffect(() => {
+        const handleMessage = (event: MessageEvent) => {
+            if (event.data.type === 'element-click') {
+                setSelectedElement(event.data);
+                setActiveSideTab('properties'); // Switch to properties tab on element click
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => {
+            window.removeEventListener('message', handleMessage);
+        };
+    }, []);
+
 
     useEffect(() => {
         scrollToBottom();
@@ -150,16 +225,23 @@ export default function PlaygroundPage() {
         setActiveSession(prev => prev ? { ...prev, chatHistory: [...prev.chatHistory, newUserMessage] } : null);
         setPrompt('');
         setIsGenerating(true);
+        setActiveSideTab('chat');
+        
+        const payload: { prompt: string, targetElement?: any } = { prompt: currentPrompt };
+        if (selectedElement) {
+            payload.targetElement = selectedElement;
+        }
 
         try {
             const response = await api.post(
                 `/sessions/${activeSession._id}/generate`,
-                { prompt: currentPrompt },
+                payload,
                 { headers: { Authorization: `Bearer ${accessToken}` } }
             );
             const updatedSession: Session = response.data;
             setActiveSession(updatedSession);
             setSessions(sessions.map(s => s._id === updatedSession._id ? updatedSession : s));
+            setSelectedElement(null);
         } catch (err: unknown) {
             console.error('Failed to generate code:', err);
             setActiveSession(prev => {
@@ -197,9 +279,7 @@ export default function PlaygroundPage() {
         document.body.removeChild(link);
     };
 
-    // FIX: Add delete session handler
     const handleDeleteSession = async (sessionIdToDelete: string) => {
-        // Simple confirmation to prevent accidental deletion
         if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
             return;
         }
@@ -227,7 +307,6 @@ export default function PlaygroundPage() {
             }
         } catch (err) {
             console.error('Failed to delete session:', err);
-            // Optionally show an error message to the user
         }
     };
 
@@ -291,6 +370,59 @@ export default function PlaygroundPage() {
             </div>
         </div>
     );
+    
+    const sidePanel = (
+         <div className="lg:w-96 flex flex-col bg-gray-800 rounded-lg shadow shrink-0">
+            <div className="flex border-b border-gray-700">
+                <button 
+                    onClick={() => setActiveSideTab('chat')} 
+                    className={`flex-1 py-3 font-semibold ${activeSideTab === 'chat' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                >
+                    Chat
+                </button>
+                <button 
+                    onClick={() => setActiveSideTab('properties')} 
+                    className={`flex-1 py-3 font-semibold ${activeSideTab === 'properties' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
+                >
+                    Properties
+                </button>
+            </div>
+            {activeSideTab === 'chat' ? (
+                <>
+                    <div ref={chatContainerRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
+                        {activeSession?.chatHistory.map((msg, index) => (
+                            <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`p-3 rounded-lg max-w-xs break-words ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}>
+                                    {msg.content}
+                                </div>
+                            </div>
+                        ))}
+                        {isGenerating && (
+                            <div className="flex justify-start">
+                                <div className="p-3 bg-gray-700 rounded-lg"><span className="animate-pulse">Generating...</span></div>
+                            </div>
+                        )}
+                    </div>
+                    <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
+                        <input
+                            type="text"
+                            value={prompt}
+                            onChange={(e) => setPrompt(e.target.value)}
+                            placeholder={
+                                isGenerating ? "Please wait..." 
+                                : selectedElement ? `Editing <${selectedElement.tagName.toLowerCase()}>...`
+                                : "Describe your component..."
+                            }
+                            disabled={isGenerating || !activeSession}
+                            className="w-full p-3 border border-gray-700 bg-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                        />
+                    </form>
+                </>
+            ) : (
+                <PropertyPanel selectedElement={selectedElement} onDeselect={() => setSelectedElement(null)} />
+            )}
+        </div>
+    );
 
     return (
         <div className="flex h-screen bg-gray-900 text-gray-200 font-sans">
@@ -304,14 +436,13 @@ export default function PlaygroundPage() {
                     </div>
                     <div className="flex-grow overflow-y-auto pr-2 space-y-2">
                         {sessions.map((session) => (
-                            // FIX: Add a container for the delete button
                             <div key={session._id} className="group relative">
                                 <div onClick={() => setActiveSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
                                     <p className="font-medium truncate">{session.name}</p>
                                 </div>
                                 <button 
                                     onClick={(e) => {
-                                        e.stopPropagation(); // Prevent the session from being selected
+                                        e.stopPropagation(); 
                                         handleDeleteSession(session._id);
                                     }}
                                     title="Delete session"
@@ -335,33 +466,7 @@ export default function PlaygroundPage() {
                         {previewPanel}
                         {codePanel}
                     </div>
-                    <div className="lg:w-96 flex flex-col bg-gray-800 rounded-lg shadow shrink-0">
-                        <h2 className="text-lg font-semibold p-4 border-b border-gray-700">Chat</h2>
-                        <div ref={chatContainerRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
-                            {activeSession?.chatHistory.map((msg, index) => (
-                                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`p-3 rounded-lg max-w-xs break-words ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-gray-700'}`}>
-                                        {msg.content}
-                                    </div>
-                                </div>
-                            ))}
-                            {isGenerating && (
-                                <div className="flex justify-start">
-                                    <div className="p-3 bg-gray-700 rounded-lg"><span className="animate-pulse">Generating...</span></div>
-                                </div>
-                            )}
-                        </div>
-                        <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
-                            <input
-                                type="text"
-                                value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
-                                placeholder={isGenerating ? "Please wait..." : "Describe your component..."}
-                                disabled={isGenerating || !activeSession}
-                                className="w-full p-3 border border-gray-700 bg-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-                            />
-                        </form>
-                    </div>
+                    {sidePanel}
                 </main>
             )}
         </div>
