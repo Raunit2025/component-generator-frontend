@@ -12,10 +12,11 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, Palette, X } from 'lucide-react';
+import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, Palette, X, PanelLeftClose, PanelRightClose, Pencil } from 'lucide-react';
 
 
 // --- Interfaces ---
+// ... (keep existing interfaces)
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -30,6 +31,7 @@ interface Session {
 }
 
 // --- Component Preview ---
+// ... (keep existing ComponentPreview component)
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
   const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +75,7 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
             color: existingStyle.color,
             fontSize: existingStyle.fontSize,
             padding: existingStyle.padding,
+            textContent: el.textContent,
           };
           window.parent.postMessage({
             type: 'element-click',
@@ -100,7 +103,8 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
 
 
 // --- Property Panel ---
-const PropertyPanel = ({ selectedElement, onDeselect }: { selectedElement: any, onDeselect: () => void }) => {
+// ... (keep existing PropertyPanel component)
+const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selectedElement: any, onDeselect: () => void, onStyleChange: (prompt: string) => void }) => {
     if (!selectedElement) {
         return (
             <div className="p-4 text-gray-400">
@@ -110,15 +114,33 @@ const PropertyPanel = ({ selectedElement, onDeselect }: { selectedElement: any, 
     }
 
     return (
-        <div className="p-4">
-            <div className="flex justify-between items-center mb-4">
+        <div className="p-4 space-y-4">
+            <div className="flex justify-between items-center mb-2">
                 <h3 className="text-lg font-semibold">Editing &lt;{selectedElement.tagName.toLowerCase()}&gt;</h3>
                 <button onClick={onDeselect} title="Deselect Element" className="p-1 rounded-full hover:bg-gray-700">
                     <X size={18} />
                 </button>
             </div>
-            {/* TODO: Add property controls here */}
-            <p className="text-sm text-gray-500">Property controls will go here.</p>
+            
+            <div>
+                <label className="block text-sm font-medium text-gray-400">Text Content</label>
+                <input
+                    type="text"
+                    defaultValue={selectedElement.styles.textContent}
+                    onBlur={(e) => onStyleChange(`change the text to "${e.target.value}"`)}
+                    className="w-full mt-1 p-2 bg-gray-900 border border-gray-700 rounded-md"
+                />
+            </div>
+            
+            <div>
+                <label className="block text-sm font-medium text-gray-400">Background Color</label>
+                <input
+                    type="color"
+                    defaultValue={selectedElement.styles.backgroundColor}
+                    onChange={(e) => onStyleChange(`change the background color to ${e.target.value}`)}
+                    className="w-full mt-1 h-10 p-1 bg-gray-900 border border-gray-700 rounded-md"
+                />
+            </div>
         </div>
     );
 };
@@ -126,6 +148,7 @@ const PropertyPanel = ({ selectedElement, onDeselect }: { selectedElement: any, 
 
 // --- Main Page Component ---
 export default function PlaygroundPage() {
+    // ... (keep existing state declarations)
     const [sessions, setSessions] = useState<Session[]>([]);
     const [activeSession, setActiveSession] = useState<Session | null>(null);
     const [prompt, setPrompt] = useState('');
@@ -134,11 +157,16 @@ export default function PlaygroundPage() {
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
     const [copyStatus, setCopyStatus] = useState('');
     const [fullscreenView, setFullscreenView] = useState<'none' | 'preview' | 'code'>('none');
+    const [isExitingFullscreen, setIsExitingFullscreen] = useState(false); // New state for exit animation
     const [activeSideTab, setActiveSideTab] = useState<'chat' | 'properties'>('chat');
     const [selectedElement, setSelectedElement] = useState<any>(null);
+    const [isSessionLoading, setIsSessionLoading] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
-
+    
+    // ... (keep ALL existing functions like handleNewSession, handleAPIMessage, fetchSessions, etc.)
     const scrollToBottom = () => {
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -146,6 +174,7 @@ export default function PlaygroundPage() {
     };
 
     const handleNewSession = useCallback(async (setActive = true) => {
+        setIsSessionLoading(true);
         const accessToken = localStorage.getItem('accessToken');
         try {
             const response = await api.post('/sessions', {}, {
@@ -158,8 +187,46 @@ export default function PlaygroundPage() {
         } catch (err) {
             console.error('Failed to create new session:', err);
             return null;
+        } finally {
+            setIsSessionLoading(false);
         }
     }, []);
+    
+    const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: any | null) => {
+        if (!promptToSend.trim() || !activeSession || isGenerating) return;
+
+        const accessToken = localStorage.getItem('accessToken');
+        const newUserMessage: ChatMessage = { role: 'user', content: promptToSend };
+        setActiveSession(prev => prev ? { ...prev, chatHistory: [...prev.chatHistory, newUserMessage] } : null);
+        setIsGenerating(true);
+        setActiveSideTab('chat');
+        
+        const payload: { prompt: string, targetElement?: any } = { prompt: promptToSend };
+        if (targetElement) {
+            payload.targetElement = targetElement;
+        }
+
+        try {
+            const response = await api.post(
+                `/sessions/${activeSession._id}/generate`,
+                payload,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            const updatedSession: Session = response.data;
+            setActiveSession(updatedSession);
+            setSessions(prev => prev.map(s => s._id === updatedSession._id ? updatedSession : s));
+            setSelectedElement(null);
+        } catch (err: unknown) {
+            console.error('Failed to generate code:', err);
+            setActiveSession(prev => {
+                if (!prev) return null;
+                const newChatHistory = prev.chatHistory.filter(msg => msg !== newUserMessage);
+                return { ...prev, chatHistory: newChatHistory };
+            });
+        } finally {
+            setIsGenerating(false);
+        }
+    }, [activeSession, isGenerating]);
 
     useEffect(() => {
         const fetchSessions = async () => {
@@ -194,7 +261,7 @@ export default function PlaygroundPage() {
         const handleMessage = (event: MessageEvent) => {
             if (event.data.type === 'element-click') {
                 setSelectedElement(event.data);
-                setActiveSideTab('properties'); // Switch to properties tab on element click
+                setActiveSideTab('properties');
             }
         };
 
@@ -214,44 +281,10 @@ export default function PlaygroundPage() {
         router.push('/auth/login');
     };
 
-    const handleSendMessage = async (e: React.FormEvent) => {
+    const handleSendMessage = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!prompt.trim() || !activeSession || isGenerating) return;
-
-        const accessToken = localStorage.getItem('accessToken');
-        const currentPrompt = prompt;
-        
-        const newUserMessage: ChatMessage = { role: 'user', content: currentPrompt };
-        setActiveSession(prev => prev ? { ...prev, chatHistory: [...prev.chatHistory, newUserMessage] } : null);
+        handleAPIMessage(prompt, selectedElement);
         setPrompt('');
-        setIsGenerating(true);
-        setActiveSideTab('chat');
-        
-        const payload: { prompt: string, targetElement?: any } = { prompt: currentPrompt };
-        if (selectedElement) {
-            payload.targetElement = selectedElement;
-        }
-
-        try {
-            const response = await api.post(
-                `/sessions/${activeSession._id}/generate`,
-                payload,
-                { headers: { Authorization: `Bearer ${accessToken}` } }
-            );
-            const updatedSession: Session = response.data;
-            setActiveSession(updatedSession);
-            setSessions(sessions.map(s => s._id === updatedSession._id ? updatedSession : s));
-            setSelectedElement(null);
-        } catch (err: unknown) {
-            console.error('Failed to generate code:', err);
-            setActiveSession(prev => {
-                if (!prev) return null;
-                const newChatHistory = prev.chatHistory.filter(msg => msg !== newUserMessage);
-                return { ...prev, chatHistory: newChatHistory };
-            });
-        } finally {
-            setIsGenerating(false);
-        }
     };
     
     const handleCopyCode = () => {
@@ -264,13 +297,10 @@ export default function PlaygroundPage() {
 
     const handleDownloadZip = async () => {
         if (!activeSession) return;
-
         const zip = new JSZip();
         zip.file("component.tsx", activeSession.jsxCode);
         zip.file("styles.css", activeSession.cssCode);
-
         const content = await zip.generateAsync({ type: "blob" });
-        
         const link = document.createElement("a");
         link.href = URL.createObjectURL(content);
         link.download = "component.zip";
@@ -283,21 +313,19 @@ export default function PlaygroundPage() {
         if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
             return;
         }
-
+        setIsSessionLoading(true);
         const accessToken = localStorage.getItem('accessToken');
         try {
             await api.delete(`/sessions/${sessionIdToDelete}`, {
                 headers: { Authorization: `Bearer ${accessToken}` },
             });
-
             const remainingSessions = sessions.filter(s => s._id !== sessionIdToDelete);
             setSessions(remainingSessions);
-
             if (activeSession?._id === sessionIdToDelete) {
                 if (remainingSessions.length > 0) {
                     setActiveSession(remainingSessions[0]);
                 } else {
-                    const newSession = await handleNewSession(true);
+                    const newSession = await handleNewSession(false);
                     if (newSession) {
                         setActiveSession(newSession);
                     } else {
@@ -307,12 +335,49 @@ export default function PlaygroundPage() {
             }
         } catch (err) {
             console.error('Failed to delete session:', err);
+        } finally {
+            setIsSessionLoading(false);
         }
     };
 
+    const handleRenameSession = async (sessionId: string, newName: string) => {
+        if (!newName.trim()) return;
+
+        const accessToken = localStorage.getItem('accessToken');
+        try {
+            const response = await api.put(`/sessions/${sessionId}/rename`, { name: newName }, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+            const updatedSession = response.data;
+            setSessions(prev => prev.map(s => s._id === sessionId ? updatedSession : s));
+            if (activeSession?._id === sessionId) {
+                setActiveSession(updatedSession);
+            }
+        } catch (err) {
+            console.error('Failed to rename session:', err);
+        } finally {
+            setEditingSessionId(null);
+        }
+    };
+
+    // --- NEW: Function to handle fullscreen toggling with animation ---
+    const handleFullscreenToggle = (view: 'preview' | 'code') => {
+        if (fullscreenView === view) { // We are exiting fullscreen
+            setIsExitingFullscreen(true);
+            setTimeout(() => {
+                setFullscreenView('none');
+                setIsExitingFullscreen(false);
+            }, 200); // Animation duration
+        } else { // We are entering fullscreen
+            setFullscreenView(view);
+        }
+    };
+
+    // ... (keep if/else blocks and other JSX the same, but update the FullscreenButton component and the main return structure)
+    // The FullscreenButton component now calls the new handler
     const FullscreenButton = ({ view }: { view: 'preview' | 'code' }) => (
         <button
-            onClick={() => setFullscreenView(prev => prev === view ? 'none' : view)}
+            onClick={() => handleFullscreenToggle(view)}
             title={fullscreenView === view ? 'Exit Fullscreen' : 'Enter Fullscreen'}
             className="p-2 rounded-md bg-gray-700 hover:bg-blue-600 transition-colors"
         >
@@ -324,8 +389,9 @@ export default function PlaygroundPage() {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
     }
     
+    // The panel definitions are simplified and no longer contain fullscreen logic
     const previewPanel = (
-        <div className={`flex-1 flex flex-col bg-gray-800 rounded-lg shadow ${fullscreenView === 'preview' ? 'fixed inset-0 z-50 m-4' : ''}`}>
+        <div className="flex-1 flex flex-col bg-gray-800 rounded-lg shadow h-full">
             <div className="flex justify-between items-center p-4 border-b border-gray-700">
                 <h2 className="text-lg font-semibold">Preview</h2>
                 <FullscreenButton view="preview" />
@@ -342,7 +408,7 @@ export default function PlaygroundPage() {
     );
 
     const codePanel = (
-        <div className={`flex-1 flex flex-col bg-gray-800 rounded-lg shadow min-h-0 ${fullscreenView === 'code' ? 'fixed inset-0 z-50 m-4' : ''}`}>
+        <div className="flex-1 flex flex-col bg-gray-800 rounded-lg shadow min-h-0 h-full">
             <div className="flex justify-between items-center border-b border-gray-700 px-2">
                 <div className="flex">
                     <button onClick={() => setActiveTab('jsx')} className={`py-3 px-4 font-semibold ${activeTab === 'jsx' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>JSX/TSX</button>
@@ -388,7 +454,7 @@ export default function PlaygroundPage() {
                 </button>
             </div>
             {activeSideTab === 'chat' ? (
-                <>
+                <div key="chat-panel" className="flex flex-col flex-1 animate-fadeIn">
                     <div ref={chatContainerRef} className="flex-1 p-4 space-y-4 overflow-y-auto">
                         {activeSession?.chatHistory.map((msg, index) => (
                             <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -417,50 +483,68 @@ export default function PlaygroundPage() {
                             className="w-full p-3 border border-gray-700 bg-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                         />
                     </form>
-                </>
+                </div>
             ) : (
-                <PropertyPanel selectedElement={selectedElement} onDeselect={() => setSelectedElement(null)} />
+                 <div key="properties-panel" className="flex-1 animate-fadeIn">
+                    <PropertyPanel 
+                        selectedElement={selectedElement} 
+                        onDeselect={() => setSelectedElement(null)}
+                        onStyleChange={(stylePrompt) => handleAPIMessage(stylePrompt, selectedElement)}
+                    />
+                </div>
             )}
         </div>
     );
 
     return (
         <div className="flex h-screen bg-gray-900 text-gray-200 font-sans">
-            {fullscreenView === 'none' && (
-                <aside className="w-72 bg-gray-800 p-4 flex flex-col shrink-0">
-                    <div className="flex items-center justify-between mb-4">
+            <div className={`flex-1 flex h-full transition-opacity duration-300 ${fullscreenView !== 'none' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                <aside className={`bg-gray-800 flex flex-col shrink-0 transition-all duration-300 ease-in-out ${isSidebarCollapsed ? 'w-0 p-0' : 'w-72 p-4'}`}>
+                    <div className={`flex items-center justify-between mb-4 transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
                         <h1 className="text-xl font-bold">My Components</h1>
                         <button onClick={() => handleNewSession()} title="Create new session" className="p-2 rounded-md bg-gray-700 hover:bg-blue-600 transition-colors">
                             <Plus size={20} />
                         </button>
                     </div>
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-2">
+                    <div className={`flex-grow overflow-y-auto pr-2 space-y-2 transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
                         {sessions.map((session) => (
                             <div key={session._id} className="group relative">
                                 <div onClick={() => setActiveSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
-                                    <p className="font-medium truncate">{session.name}</p>
+                                    {editingSessionId === session._id ? (
+                                        <input
+                                            type="text"
+                                            defaultValue={session.name}
+                                            className="bg-transparent w-full outline-none"
+                                            autoFocus
+                                            onBlur={(e) => handleRenameSession(session._id, e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') handleRenameSession(session._id, e.currentTarget.value);
+                                                if (e.key === 'Escape') setEditingSessionId(null);
+                                            }}
+                                        />
+                                    ) : (
+                                        <p className="font-medium truncate">{session.name}</p>
+                                    )}
                                 </div>
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation(); 
-                                        handleDeleteSession(session._id);
-                                    }}
-                                    title="Delete session"
-                                    className="absolute top-1/2 right-2 -translate-y-1/2 p-1.5 rounded-full text-gray-400 hover:bg-red-500 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <Trash2 size={16} />
-                                </button>
+                                <div className="absolute top-1/2 right-2 -translate-y-1/2 flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => setEditingSessionId(session._id)} title="Rename session" className="p-1.5 rounded-full text-gray-400 hover:bg-gray-600 hover:text-white">
+                                        <Pencil size={14} />
+                                    </button>
+                                    <button onClick={(e) => { e.stopPropagation(); handleDeleteSession(session._id); }} title="Delete session" className="p-1.5 rounded-full text-gray-400 hover:bg-red-500 hover:text-white">
+                                        <Trash2 size={14} />
+                                    </button>
+                                </div>
                             </div>
                         ))}
                     </div>
-                    <button onClick={handleLogout} className="mt-4 flex items-center justify-center w-full bg-gray-700 text-gray-300 py-2 px-4 rounded-md hover:bg-red-600 hover:text-white transition-colors">
+                    <button onClick={handleLogout} className={`mt-4 flex items-center justify-center w-full bg-gray-700 text-gray-300 py-2 px-4 rounded-md hover:bg-red-600 hover:text-white transition-colors transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
                        <LogOut size={18} className="mr-2" />
                        Log Out
                     </button>
                 </aside>
-            )}
-
-            {fullscreenView === 'preview' ? previewPanel : fullscreenView === 'code' ? codePanel : (
+                <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="bg-gray-800 h-12 self-center rounded-r-lg px-1 text-gray-400 hover:bg-gray-700 hover:text-white">
+                    {isSidebarCollapsed ? <PanelRightClose size={20} /> : <PanelLeftClose size={20} />}
+                </button>
                  <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-w-0">
                     <div className="flex flex-col flex-1 gap-4 min-w-0 min-h-0">
                         {previewPanel}
@@ -468,6 +552,18 @@ export default function PlaygroundPage() {
                     </div>
                     {sidePanel}
                 </main>
+            </div>
+            
+            {/* NEW: Fullscreen overlays rendered on top */}
+            {fullscreenView === 'preview' && (
+                <div className={`fixed inset-0 z-50 p-4 ${isExitingFullscreen ? 'animate-zoomOut' : 'animate-zoomIn'}`}>
+                    {previewPanel}
+                </div>
+            )}
+            {fullscreenView === 'code' && (
+                <div className={`fixed inset-0 z-50 p-4 ${isExitingFullscreen ? 'animate-zoomOut' : 'animate-zoomIn'}`}>
+                    {codePanel}
+                </div>
             )}
         </div>
     );
