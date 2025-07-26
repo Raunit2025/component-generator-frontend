@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Component Generator - Frontend
 
-## Getting Started
+[![React](https://img.shields.io/badge/React-19-blue.svg)](https://reactjs.org/)
+[![Next.js](https://img.shields.io/badge/Next.js-15.x-black.svg)](https://nextjs.org/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Build](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
 
-First, run the development server:
+This is the frontend for the AI Component Generator, a stateful, AI-driven micro-frontend playground. It allows authenticated users to iteratively generate, preview, tweak, and export React components using a conversational interface.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- ✅ **Interactive Playground**: A three-panel layout for component preview, code inspection, and AI chat.
+- ✅ **Live Component Rendering**: Securely renders AI-generated components in an `<iframe>` sandbox.
+- ✅ **Session Management**: Users can create new sessions or resume previous ones, with all work preserved.
+- ✅ **Code Inspection & Export**: View generated JSX/TSX and CSS in syntax-highlighted tabs, with options to copy or download as a `.zip` file.
+- ✅ **Authentication Flow**: Full UI for signup, login, and OAuth callbacks.
+- ✅ **Responsive Design**: Built with Tailwind CSS for a seamless experience on all devices.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Framework**: React & Next.js
+- **Styling**: Tailwind CSS
+- **State Management**: React Hooks (`useState`, `useEffect`)
+- **API Communication**: Axios
+- **Code Highlighting**: `react-syntax-highlighter`
+- **Icons**: `lucide-react`
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## Installation
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/your-username/your-repo-name.git](https://github.com/your-username/your-repo-name.git)
+    cd component-generator-frontend
+    ```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-## Deploy on Vercel
+3.  **Create `.env.local` file:**
+    Create a new environment file in the root of the frontend directory.
+    ```bash
+    touch .env.local
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+4.  **Configure your `.env.local` file:**
+    Add the URL of your running backend server.
+    ```env
+    NEXT_PUBLIC_BACKEND_URL=http://localhost:3001
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+5.  **Start the local development server:**
+    ```bash
+    npm run dev
+    ```
+
+The application should now be running at `http://localhost:3000`.
+
+---
+
+## Project Structure
+
+
+/
+|-- public/                 # Static assets (icons, etc.)
+|-- src/
+|   |-- app/                # Next.js App Router pages
+|   |   |-- auth/           # Auth pages (login, signup, callback)
+|   |   |-- playground/     # The main application playground
+|   |   |-- layout.tsx
+|   |   |-- page.tsx        # Landing page
+|   |-- lib/
+|   |   |-- axios.ts        # Axios instance with interceptors
+|-- .env.local              # Environment variables
+|-- next.config.ts          # Next.js configuration
+|-- package.json            # Project dependencies
+|-- tailwind.config.ts      # Tailwind CSS configuration
+
+
+## Contributing
+
+Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
+
+## Author
+
+**Raunit Raj** — [LinkedIn](https://www.linkedin.com/in/raunitraj/)
+<br />
+*Computer Science & Engineering Student*
