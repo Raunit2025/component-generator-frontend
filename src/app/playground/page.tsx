@@ -8,6 +8,8 @@ import React from 'react';
 // @ts-ignore (Babel is loaded from a script tag and won't have types)
 import { transform } from '@babel/standalone';
 import api from '../../lib/axios'; // Use our custom api client
+import axios from 'axios'; // <-- Import axios for the type guard
+import JSZip from 'jszip';
 
 // --- Interfaces ---
 interface ChatMessage {
@@ -23,15 +25,13 @@ interface Session {
   chatHistory: ChatMessage[];
 }
 
-// --- Component Preview (Definitive, Final Version) ---
+// --- Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
   try {
+    // Step 1: Transpile the JSX/TSX code into plain JavaScript.
+    // We no longer need the 'transform-modules-commonjs' plugin.
     const transformedResult = transform(jsxCode, {
       presets: ['react', 'typescript'],
-      plugins: [
-        // This plugin transforms 'import' statements into 'require()' calls
-        'transform-modules-commonjs'
-      ],
       filename: 'component.tsx',
     });
 
@@ -39,31 +39,18 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
       throw new Error("Babel transformation returned empty code.");
     }
     
+    // The transpiled code will look something like:
+    // "const GeneratedComponent = () => { return React.createElement(...) }; GeneratedComponent;"
     const transformedCode = transformedResult.code;
     
-    // This is our fake 'require' function. It only knows how to provide React.
-    const dummyRequire = (moduleName: string) => {
-        if (moduleName === 'react') {
-            return React;
-        }
-        throw new Error(`Cannot find module '${moduleName}'`);
-    };
-    
-    // Create a scope to evaluate the code and capture exports
-    const factory = new Function('React', 'module', 'exports', 'require', transformedCode);
-    const module: { exports: any } = { exports: {} };
-    // We execute the factory, providing our fake module environment
-    factory(React, module, module.exports, dummyRequire);
-
-    // Find the exported React component
-    let ComponentToRender = module.exports.default;
-    if (!ComponentToRender) {
-      const exports = Object.values(module.exports);
-      ComponentToRender = exports.find(exp => typeof exp === 'function');
-    }
+    // Step 2: Evaluate the code in a sandboxed function to get the component.
+    // We pass React into the function's scope. The last line of the code
+    // is the component name itself, which becomes the return value.
+    const factory = new Function('React', `return (()=>{${transformedCode}})()`);
+    const ComponentToRender = factory(React);
 
     if (!ComponentToRender || (typeof ComponentToRender !== 'function' && typeof ComponentToRender !== 'object')) {
-        return <div style={{ color: '#f97316', padding: '1rem', fontFamily: 'sans-serif' }}>The AI-generated code did not export a valid React component.</div>;
+        return <div style={{ color: '#f97316', padding: '1rem', fontFamily: 'sans-serif' }}>The AI-generated code did not return a valid React component.</div>;
     }
     
     return (
@@ -88,12 +75,28 @@ export default function PlaygroundPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
+    const [copyStatus, setCopyStatus] = useState(''); // For copy feedback
     const router = useRouter();
     const chatContainerRef = useRef<HTMLDivElement>(null);
 
     const scrollToBottom = () => {
         if (chatContainerRef.current) {
             chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+    };
+
+    // This needs to be memoized or moved outside to avoid being redeclared on every render
+    const handleNewSession = async (setActive = true) => {
+        const accessToken = localStorage.getItem('accessToken');
+        try {
+            const response = await api.post('/sessions', {}, {
+                headers: { Authorization: `Bearer ${accessToken}` },
+            });
+            const newSession = response.data;
+            setSessions(prev => [newSession, ...prev]);
+            if(setActive) setActiveSession(newSession);
+        } catch (err) {
+            console.error('Failed to create new session:', err);
         }
     };
 
@@ -111,9 +114,16 @@ export default function PlaygroundPage() {
                 setSessions(response.data);
                 if (response.data.length > 0) {
                     setActiveSession(response.data[0]);
+                } else {
+                  // If no sessions, create one
+                  await handleNewSession(false);
                 }
-            } catch (err) {
+            } catch (err: unknown) { // <-- Correctly typed as unknown
                 console.error('Failed to fetch sessions:', err);
+                // Use axios type guard to safely access properties
+                 if (axios.isAxiosError(err) && err.response?.status === 401) {
+                    router.push('/auth/login');
+                }
             } finally {
                 setLoading(false);
             }
@@ -124,20 +134,6 @@ export default function PlaygroundPage() {
     useEffect(() => {
         scrollToBottom();
     }, [activeSession?.chatHistory, isGenerating]);
-
-    const handleNewSession = async () => {
-        const accessToken = localStorage.getItem('accessToken');
-        try {
-            const response = await api.post('/sessions', {}, {
-                headers: { Authorization: `Bearer ${accessToken}` },
-            });
-            const newSession = response.data;
-            setSessions([newSession, ...sessions]);
-            setActiveSession(newSession);
-        } catch (err) {
-            console.error('Failed to create new session:', err);
-        }
-    };
     
     const handleLogout = () => {
         localStorage.clear();
@@ -165,14 +161,41 @@ export default function PlaygroundPage() {
             const updatedSession: Session = response.data;
             setActiveSession(updatedSession);
             setSessions(sessions.map(s => s._id === updatedSession._id ? updatedSession : s));
-        } catch (err) {
+        } catch (err: unknown) { // <-- Correctly typed as unknown
             console.error('Failed to generate code:', err);
+            // Revert optimistic UI update on error
             setActiveSession(prev => prev ? { ...prev, chatHistory: prev.chatHistory.slice(0, -1) } : null);
         } finally {
             setIsGenerating(false);
         }
     };
     
+    const handleCopyCode = () => {
+        if (!activeSession) return;
+        const codeToCopy = activeTab === 'jsx' ? activeSession.jsxCode : activeSession.cssCode;
+        navigator.clipboard.writeText(codeToCopy);
+        setCopyStatus('Copied!');
+        setTimeout(() => setCopyStatus(''), 2000);
+    };
+
+    const handleDownloadZip = async () => {
+        if (!activeSession) return;
+
+        const zip = new JSZip();
+        zip.file("component.tsx", activeSession.jsxCode);
+        zip.file("styles.css", activeSession.cssCode);
+
+        const content = await zip.generateAsync({ type: "blob" });
+        
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(content);
+        link.download = "component.zip";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+
     if (loading) {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
     }
@@ -182,7 +205,7 @@ export default function PlaygroundPage() {
             <aside className="w-72 bg-gray-800 p-4 flex flex-col shrink-0">
                 <div className="flex items-center justify-between mb-4">
                     <h1 className="text-xl font-bold">My Components</h1>
-                    <button onClick={handleNewSession} title="Create new session" className="p-2 rounded-md bg-gray-700 hover:bg-blue-600 transition-colors">
+                    <button onClick={() => handleNewSession()} title="Create new session" className="p-2 rounded-md bg-gray-700 hover:bg-blue-600 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" /></svg>
                     </button>
                 </div>
@@ -213,9 +236,19 @@ export default function PlaygroundPage() {
                         </div>
                     </div>
                     <div className="flex-1 flex flex-col bg-gray-800 rounded-lg shadow">
-                        <div className="flex border-b border-gray-700 px-2">
-                            <button onClick={() => setActiveTab('jsx')} className={`py-3 px-4 font-semibold ${activeTab === 'jsx' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>JSX/TSX</button>
-                            <button onClick={() => setActiveTab('css')} className={`py-3 px-4 font-semibold ${activeTab === 'css' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>CSS</button>
+                        <div className="flex justify-between items-center border-b border-gray-700 px-2">
+                            <div className="flex">
+                                <button onClick={() => setActiveTab('jsx')} className={`py-3 px-4 font-semibold ${activeTab === 'jsx' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>JSX/TSX</button>
+                                <button onClick={() => setActiveTab('css')} className={`py-3 px-4 font-semibold ${activeTab === 'css' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}>CSS</button>
+                            </div>
+                            <div className="flex items-center gap-2 pr-2">
+                                <button onClick={handleCopyCode} className="text-gray-400 hover:text-white transition-colors text-sm font-semibold p-2 rounded-md bg-gray-700 hover:bg-gray-600">
+                                    {copyStatus || 'Copy'}
+                                </button>
+                                <button onClick={handleDownloadZip} className="text-gray-400 hover:text-white transition-colors text-sm font-semibold p-2 rounded-md bg-gray-700 hover:bg-gray-600">
+                                    Download .zip
+                                </button>
+                            </div>
                         </div>
                         <div className="flex-1 p-1 relative">
                             <pre className="bg-gray-900 text-gray-300 p-4 rounded-b-md h-full overflow-auto text-sm font-mono">

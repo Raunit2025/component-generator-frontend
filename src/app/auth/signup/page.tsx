@@ -23,7 +23,6 @@ export default function SignupPage() {
                 password,
             });
             setMessage(response.data.message + ' You can now log in.');
-            // Redirect to login after a short delay
             setTimeout(() => {
                 router.push('/auth/login');
             }, 2000);
@@ -34,27 +33,27 @@ export default function SignupPage() {
     };
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-900 text-white p-4">
+        <div className="flex min-h-screen items-center justify-center p-4 animated-gradient">
             <div className="w-full max-w-md space-y-8">
                 <div className="text-center">
-                    <h1 className="text-3xl font-bold tracking-tight">Component Generator</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-white">Component Generator</h1>
                     <p className="mt-2 text-gray-400">Create your account</p>
                 </div>
-                <form onSubmit={handleSubmit} className="space-y-6 bg-gray-800 p-8 rounded-lg shadow-lg">
+                <form onSubmit={handleSubmit} className="space-y-6 bg-gray-800/80 backdrop-blur-sm p-8 rounded-xl shadow-2xl">
                     <div className="space-y-2">
-                        <label htmlFor="email" className="font-medium">Email</label>
+                        <label htmlFor="email" className="font-medium text-gray-300">Email</label>
                         <input
                             id="email"
                             type="email"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
-                            className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                            className="w-full rounded-md border-2 border-gray-700 bg-gray-900/80 px-3 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                             placeholder="you@example.com"
                         />
                     </div>
                     <div className="space-y-2">
-                        <label htmlFor="password" className="font-medium">Password</label>
+                        <label htmlFor="password" className="font-medium text-gray-300">Password</label>
                         <input
                             id="password"
                             type="password"
@@ -62,13 +61,13 @@ export default function SignupPage() {
                             onChange={(e) => setPassword(e.target.value)}
                             required
                             minLength={6}
-                            className="w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-2 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                            className="w-full rounded-md border-2 border-gray-700 bg-gray-900/80 px-3 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
                             placeholder="••••••••"
                         />
                     </div>
                     <button
                         type="submit"
-                        className="w-full rounded-md bg-blue-600 py-2 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
+                        className="w-full rounded-md bg-blue-600 py-3 font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-gray-900"
                     >
                         Sign Up
                     </button>
