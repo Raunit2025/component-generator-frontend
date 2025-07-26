@@ -63,7 +63,20 @@ The application should now be running at `http://localhost:3000`.
 
 ## Project Structure
 
-<pre lang="text"> ``` / |-- public/ # Static assets (icons, etc.) |-- src/ | |-- app/ # Next.js App Router pages | | |-- auth/ # Auth pages (login, signup, callback) | | |-- playground/ # The main application playground | | |-- layout.tsx | | |-- page.tsx # Landing page | |-- lib/ | | |-- axios.ts # Axios instance with interceptors |-- .env.local # Environment variables |-- next.config.ts # Next.js configuration |-- package.json # Project dependencies |-- tailwind.config.ts # Tailwind CSS configuration ``` </pre>
+| Path                      | Description                                      |
+|---------------------------|--------------------------------------------------|
+| `/public/`                | Static assets (icons, etc.)                      |
+| `/src/app/`               | Next.js App Router pages                         |
+| `/src/app/auth/`          | Auth pages (login, signup, callback)            |
+| `/src/app/playground/`    | The main application playground                  |
+| `/src/app/layout.tsx`     | Shared layout component                          |
+| `/src/app/page.tsx`       | Landing page                                     |
+| `/src/lib/axios.ts`       | Axios instance with interceptors                 |
+| `/.env.local`             | Environment variables                            |
+| `/next.config.ts`         | Next.js configuration                            |
+| `/package.json`           | Project dependencies                             |
+| `/tailwind.config.ts`     | Tailwind CSS configuration                       |
+
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
