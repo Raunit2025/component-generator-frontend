@@ -1,12 +1,18 @@
-// src/app/profile/page.tsx
 'use client';
 
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useRouter } from 'next/navigation';
 
+// Interface for the user profile data
+interface UserProfile {
+    id: string;
+    email: string;
+    createdAt: string;
+}
+
 export default function ProfilePage() {
-    const [userProfile, setUserProfile] = useState<any>(null);
+    const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const router = useRouter();
@@ -15,7 +21,7 @@ export default function ProfilePage() {
         const fetchProfile = async () => {
             const accessToken = localStorage.getItem('accessToken');
             if (!accessToken) {
-                router.push('/auth/login'); // Redirect to login if no token
+                router.push('/auth/login');
                 return;
             }
 
@@ -26,15 +32,15 @@ export default function ProfilePage() {
                     },
                 });
                 setUserProfile(response.data);
-                setLoading(false);
-            } catch (err: any) {
-                console.error('Failed to fetch profile:', err.response?.data || err);
+            } catch (err: unknown) {
+                console.error('Failed to fetch profile:', err);
                 setError('Failed to load profile. Please log in again.');
-                // Clear invalid token and redirect
                 localStorage.removeItem('accessToken');
                 localStorage.removeItem('userEmail');
                 localStorage.removeItem('userId');
                 router.push('/auth/login');
+            } finally {
+                setLoading(false);
             }
         };
 
@@ -45,7 +51,7 @@ export default function ProfilePage() {
         localStorage.removeItem('accessToken');
         localStorage.removeItem('userEmail');
         localStorage.removeItem('userId');
-        router.push('/auth/login'); // Redirect to login page after logout
+        router.push('/auth/login');
     };
 
     if (loading) {
@@ -54,10 +60,10 @@ export default function ProfilePage() {
         );
     }
 
-    if (error) {
+    if (error || !userProfile) {
         return (
             <div className="min-h-screen flex items-center justify-center text-red-600 text-xl font-semibold">
-                {error}
+                {error || 'Could not load profile.'}
                 <button onClick={() => router.push('/auth/login')} className="ml-4 px-4 py-2 bg-blue-500 text-white rounded">
                     Go to Login
                 </button>

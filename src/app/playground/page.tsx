@@ -1,18 +1,16 @@
-// src/app/playground/page.tsx
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Frame from 'react-frame-component';
 import React from 'react';
-// @ts-ignore (Babel is loaded from a script tag and won't have types)
 import { transform } from '@babel/standalone';
 import api from '../../lib/axios';
 import axios from 'axios';
 import JSZip from 'jszip';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, Palette, X, PanelLeftClose, PanelRightClose, Pencil } from 'lucide-react';
+import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, X, PanelLeftClose, PanelRightClose, Pencil } from 'lucide-react';
 
 
 // --- Interfaces ---
@@ -28,6 +26,20 @@ interface Session {
   cssCode: string;
   chatHistory: ChatMessage[];
 }
+
+// NEW: Interface for the selected element
+interface SelectedElement {
+  elementId: string;
+  tagName: string;
+  styles: {
+    backgroundColor: string;
+    color: string;
+    fontSize: string;
+    padding: string;
+    textContent: string | null;
+  };
+}
+
 
 // --- Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
@@ -101,7 +113,7 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
 
 
 // --- Property Panel ---
-const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selectedElement: any, onDeselect: () => void, onStyleChange: (prompt: string) => void }) => {
+const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selectedElement: SelectedElement | null, onDeselect: () => void, onStyleChange: (prompt: string) => void }) => {
     if (!selectedElement) {
         return (
             <div className="p-4 text-gray-400">
@@ -123,7 +135,7 @@ const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selecte
                 <label className="block text-sm font-medium text-gray-400">Text Content</label>
                 <input
                     type="text"
-                    defaultValue={selectedElement.styles.textContent}
+                    defaultValue={selectedElement.styles.textContent || ''}
                     onBlur={(e) => onStyleChange(`change the text to "${e.target.value}"`)}
                     className="w-full mt-1 p-2 bg-gray-900 border border-gray-700 rounded-md"
                 />
@@ -155,7 +167,7 @@ export default function PlaygroundPage() {
     const [fullscreenView, setFullscreenView] = useState<'none' | 'preview' | 'code'>('none');
     const [isExitingFullscreen, setIsExitingFullscreen] = useState(false);
     const [activeSideTab, setActiveSideTab] = useState<'chat' | 'properties'>('chat');
-    const [selectedElement, setSelectedElement] = useState<any>(null);
+    const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
     const [isSessionLoading, setIsSessionLoading] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
@@ -187,7 +199,7 @@ export default function PlaygroundPage() {
         }
     }, []);
     
-    const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: any | null) => {
+    const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: SelectedElement | null) => {
         if (!promptToSend.trim() || !activeSession || isGenerating) return;
 
         const accessToken = localStorage.getItem('accessToken');
@@ -196,7 +208,7 @@ export default function PlaygroundPage() {
         setIsGenerating(true);
         setActiveSideTab('chat');
         
-        const payload: { prompt: string, targetElement?: any } = { prompt: promptToSend };
+        const payload: { prompt: string, targetElement?: SelectedElement } = { prompt: promptToSend };
         if (targetElement) {
             payload.targetElement = targetElement;
         }
@@ -389,6 +401,7 @@ export default function PlaygroundPage() {
             </div>
             <div className="flex-1 p-2 bg-white rounded-b-lg min-h-0">
                 <Frame
+                    // eslint-disable-next-line @next/next/no-sync-scripts
                     head={<><script src="https://cdn.tailwindcss.com"></script></>}
                     className="w-full h-full border-0"
                 >
