@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
-export default function CallbackClient() {
+export default function CallBackClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 

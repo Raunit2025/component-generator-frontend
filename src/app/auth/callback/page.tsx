@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import CallbackClient from './CallBackClient';
+import CallBackClient from './CallBackClient';
 
 function Loading() {
   return (
@@ -12,7 +12,7 @@ function Loading() {
 export default function AuthCallbackPage() {
   return (
     <Suspense fallback={<Loading />}>
-      <CallbackClient />
+      <CallBackClient />
     </Suspense>
   );
 }
