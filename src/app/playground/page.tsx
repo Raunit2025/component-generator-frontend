@@ -27,7 +27,6 @@ interface Session {
   chatHistory: ChatMessage[];
 }
 
-// NEW: Interface for the selected element
 interface SelectedElement {
   elementId: string;
   tagName: string;
@@ -168,7 +167,6 @@ export default function PlaygroundPage() {
     const [isExitingFullscreen, setIsExitingFullscreen] = useState(false);
     const [activeSideTab, setActiveSideTab] = useState<'chat' | 'properties'>('chat');
     const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
-    const [isSessionLoading, setIsSessionLoading] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
     const router = useRouter();
@@ -181,7 +179,6 @@ export default function PlaygroundPage() {
     };
 
     const handleNewSession = useCallback(async (setActive = true) => {
-        setIsSessionLoading(true);
         const accessToken = localStorage.getItem('accessToken');
         try {
             const response = await api.post('/sessions', {}, {
@@ -194,8 +191,6 @@ export default function PlaygroundPage() {
         } catch (err) {
             console.error('Failed to create new session:', err);
             return null;
-        } finally {
-            setIsSessionLoading(false);
         }
     }, []);
     
@@ -320,7 +315,6 @@ export default function PlaygroundPage() {
         if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
             return;
         }
-        setIsSessionLoading(true);
         const accessToken = localStorage.getItem('accessToken');
         try {
             await api.delete(`/sessions/${sessionIdToDelete}`, {
@@ -342,8 +336,6 @@ export default function PlaygroundPage() {
             }
         } catch (err) {
             console.error('Failed to delete session:', err);
-        } finally {
-            setIsSessionLoading(false);
         }
     };
 
