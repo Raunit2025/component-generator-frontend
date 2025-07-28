@@ -54,7 +54,7 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
         filename: 'component.tsx',
       });
       if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
-      
+
       const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
       const Component = factory(React);
 
@@ -178,6 +178,17 @@ export default function PlaygroundPage() {
         }
     };
 
+    // --- NEW: Function to activate a session ---
+    const activateSession = useCallback(async (session: Session) => {
+        try {
+            await api.get(`/sessions/${session._id}/activate`);
+            setActiveSession(session);
+        } catch (error) {
+            console.error("Failed to activate session:", error);
+            // Optionally, show an error to the user
+        }
+    }, []);
+
     const handleNewSession = useCallback(async (setActive = true) => {
         const accessToken = localStorage.getItem('accessToken');
         try {
@@ -186,13 +197,15 @@ export default function PlaygroundPage() {
             });
             const newSession = response.data;
             setSessions(prev => [newSession, ...prev]);
-            if(setActive) setActiveSession(newSession);
+            if (setActive) {
+                await activateSession(newSession); // Activate the new session
+            }
             return newSession;
         } catch (err) {
             console.error('Failed to create new session:', err);
             return null;
         }
-    }, []);
+    }, [activateSession]);
     
     const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: SelectedElement | null) => {
         if (!promptToSend.trim() || !activeSession || isGenerating) return;
@@ -216,7 +229,7 @@ export default function PlaygroundPage() {
             );
             const updatedSession: Session = response.data;
             setActiveSession(updatedSession);
-            setSessions(prev => prev.map(s => s._id === updatedSession._id ? updatedSession : s));
+            // We don't need to update the main sessions list here as the data is in Redis
             setSelectedElement(null);
         } catch (err: unknown) {
             console.error('Failed to generate code:', err);
@@ -243,7 +256,7 @@ export default function PlaygroundPage() {
                 });
                 if (response.data && response.data.length > 0) {
                     setSessions(response.data);
-                    setActiveSession(response.data[0]);
+                    await activateSession(response.data[0]); // Activate the first session
                 } else {
                   await handleNewSession(true);
                 }
@@ -257,7 +270,35 @@ export default function PlaygroundPage() {
             }
         };
         fetchSessions();
-    }, [router, handleNewSession]);
+    }, [router, handleNewSession, activateSession]);
+
+    // --- NEW: Effect for persisting session data ---
+    useEffect(() => {
+        const persistData = async () => {
+            if (activeSession?._id) {
+                try {
+                    await api.put(`/sessions/${activeSession._id}/persist`);
+                } catch (error) {
+                    console.error("Failed to auto-persist session:", error);
+                }
+            }
+        };
+
+        // Persist every 30 seconds
+        const intervalId = setInterval(persistData, 30000);
+
+        // Persist when the user leaves the page
+        const handleBeforeUnload = () => {
+            persistData();
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+
+        return () => {
+            clearInterval(intervalId);
+            window.removeEventListener('beforeunload', handleBeforeUnload);
+            persistData(); // Persist one last time when the component unmounts
+        };
+    }, [activeSession]);
     
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
@@ -279,6 +320,9 @@ export default function PlaygroundPage() {
     }, [activeSession?.chatHistory, isGenerating]);
     
     const handleLogout = () => {
+        if (activeSession?._id) {
+            api.put(`/sessions/${activeSession._id}/persist`);
+        }
         localStorage.clear();
         router.push('/auth/login');
     };
@@ -324,11 +368,11 @@ export default function PlaygroundPage() {
             setSessions(remainingSessions);
             if (activeSession?._id === sessionIdToDelete) {
                 if (remainingSessions.length > 0) {
-                    setActiveSession(remainingSessions[0]);
+                    await activateSession(remainingSessions[0]);
                 } else {
                     const newSession = await handleNewSession(false);
                     if (newSession) {
-                        setActiveSession(newSession);
+                        await activateSession(newSession);
                     } else {
                         setActiveSession(null);
                     }
@@ -505,7 +549,7 @@ export default function PlaygroundPage() {
                     <div className={`flex-grow overflow-y-auto pr-2 space-y-2 transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
                         {sessions.map((session) => (
                             <div key={session._id} className="group relative">
-                                <div onClick={() => setActiveSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                <div onClick={() => activateSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
                                     {editingSessionId === session._id ? (
                                         <input
                                             type="text"
