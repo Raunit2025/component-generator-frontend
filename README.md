@@ -6,9 +6,9 @@ This is the frontend for the **AI Component Generator**, a stateful, AI-driven m
 
 ## 🔗 Live Demo & Repository
 
-- 🔥 **Live Demo** (Vercel): [https://component-generator-frontend.vercel.app/](https://component-generator-frontend.vercel.app/)
-- 🧠 **Backend Server** (Render): [https://component-generator-backend.onrender.com/](https://component-generator-backend.onrender.com/)
-- 🛠 **GitHub Repository**: [https://github.com/raunit2025/component-generator](https://github.com/raunit2025/component-generator)
+- 🔥 **Live Demo** (Vercel): [Vercel](https://component-generator-frontend.vercel.app/)
+- 🧠 **Backend Server** (Render): [API Check](https://component-generator-backend.onrender.com/)
+- 🛠 **GitHub Repository**: [Link](https://github.com/Raunit2025/component-generator-frontend.git)
 
 ---
 
