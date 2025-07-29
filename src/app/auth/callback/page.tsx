@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import CallbackClient from './CallbackClient'; // Corrected from CallBackClient to CallbackClient
+import CallbackClient from './CallbackClient'; 
 
 function Loading() {
   return (
