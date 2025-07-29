@@ -54,7 +54,7 @@ const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: stri
         filename: 'component.tsx',
       });
       if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
-
+      
       const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
       const Component = factory(React);
 
@@ -156,11 +156,12 @@ const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selecte
 
 // --- Main Page Component ---
 export default function PlaygroundPage() {
+    const [authStatus, setAuthStatus] = useState<'checking' | 'authenticated' | 'unauthenticated'>('checking');
     const [sessions, setSessions] = useState<Session[]>([]);
     const [activeSession, setActiveSession] = useState<Session | null>(null);
     const [prompt, setPrompt] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
-    const [loading, setLoading] = useState(true);
+    const [dataLoading, setDataLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'jsx' | 'css'>('jsx');
     const [copyStatus, setCopyStatus] = useState('');
     const [fullscreenView, setFullscreenView] = useState<'none' | 'preview' | 'code'>('none');
@@ -178,17 +179,6 @@ export default function PlaygroundPage() {
         }
     };
 
-    // --- NEW: Function to activate a session ---
-    const activateSession = useCallback(async (session: Session) => {
-        try {
-            await api.get(`/sessions/${session._id}/activate`);
-            setActiveSession(session);
-        } catch (error) {
-            console.error("Failed to activate session:", error);
-            // Optionally, show an error to the user
-        }
-    }, []);
-
     const handleNewSession = useCallback(async (setActive = true) => {
         const accessToken = localStorage.getItem('accessToken');
         try {
@@ -197,15 +187,61 @@ export default function PlaygroundPage() {
             });
             const newSession = response.data;
             setSessions(prev => [newSession, ...prev]);
-            if (setActive) {
-                await activateSession(newSession); // Activate the new session
-            }
+            if(setActive) setActiveSession(newSession);
             return newSession;
         } catch (err) {
             console.error('Failed to create new session:', err);
             return null;
         }
-    }, [activateSession]);
+    }, []);
+    
+    // Effect to check authentication status on component mount
+    useEffect(() => {
+        const accessToken = localStorage.getItem('accessToken');
+        if (accessToken) {
+            setAuthStatus('authenticated');
+        } else {
+            setAuthStatus('unauthenticated');
+        }
+    }, []);
+
+    // Effect to handle routing and data fetching based on auth status
+    useEffect(() => {
+        if (authStatus === 'unauthenticated') {
+            router.push('/auth/login');
+            return;
+        }
+
+        if (authStatus === 'authenticated') {
+            const fetchSessions = async () => {
+                const accessToken = localStorage.getItem('accessToken');
+                // Double check token exists before fetching
+                if (!accessToken) {
+                    setAuthStatus('unauthenticated');
+                    return;
+                }
+                try {
+                    const response = await api.get('/sessions', {
+                        headers: { Authorization: `Bearer ${accessToken}` },
+                    });
+                    if (response.data && response.data.length > 0) {
+                        setSessions(response.data);
+                        setActiveSession(response.data[0]);
+                    } else {
+                      await handleNewSession(true);
+                    }
+                } catch (err: unknown) {
+                    console.error('Failed to fetch sessions:', err);
+                     if (axios.isAxiosError(err) && err.response?.status === 401) {
+                        setAuthStatus('unauthenticated');
+                    }
+                } finally {
+                    setDataLoading(false);
+                }
+            };
+            fetchSessions();
+        }
+    }, [authStatus, router, handleNewSession]);
     
     const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: SelectedElement | null) => {
         if (!promptToSend.trim() || !activeSession || isGenerating) return;
@@ -229,7 +265,7 @@ export default function PlaygroundPage() {
             );
             const updatedSession: Session = response.data;
             setActiveSession(updatedSession);
-            // We don't need to update the main sessions list here as the data is in Redis
+            setSessions(prev => prev.map(s => s._id === updatedSession._id ? updatedSession : s));
             setSelectedElement(null);
         } catch (err: unknown) {
             console.error('Failed to generate code:', err);
@@ -243,63 +279,6 @@ export default function PlaygroundPage() {
         }
     }, [activeSession, isGenerating]);
 
-    useEffect(() => {
-        const fetchSessions = async () => {
-            const accessToken = localStorage.getItem('accessToken');
-            if (!accessToken) {
-                router.push('/auth/login');
-                return;
-            }
-            try {
-                const response = await api.get('/sessions', {
-                    headers: { Authorization: `Bearer ${accessToken}` },
-                });
-                if (response.data && response.data.length > 0) {
-                    setSessions(response.data);
-                    await activateSession(response.data[0]); // Activate the first session
-                } else {
-                  await handleNewSession(true);
-                }
-            } catch (err: unknown) {
-                console.error('Failed to fetch sessions:', err);
-                 if (axios.isAxiosError(err) && err.response?.status === 401) {
-                    router.push('/auth/login');
-                }
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchSessions();
-    }, [router, handleNewSession, activateSession]);
-
-    // --- NEW: Effect for persisting session data ---
-    useEffect(() => {
-        const persistData = async () => {
-            if (activeSession?._id) {
-                try {
-                    await api.put(`/sessions/${activeSession._id}/persist`);
-                } catch (error) {
-                    console.error("Failed to auto-persist session:", error);
-                }
-            }
-        };
-
-        // Persist every 30 seconds
-        const intervalId = setInterval(persistData, 30000);
-
-        // Persist when the user leaves the page
-        const handleBeforeUnload = () => {
-            persistData();
-        };
-        window.addEventListener('beforeunload', handleBeforeUnload);
-
-        return () => {
-            clearInterval(intervalId);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-            persistData(); // Persist one last time when the component unmounts
-        };
-    }, [activeSession]);
-    
     useEffect(() => {
         const handleMessage = (event: MessageEvent) => {
             if (event.data.type === 'element-click') {
@@ -320,9 +299,6 @@ export default function PlaygroundPage() {
     }, [activeSession?.chatHistory, isGenerating]);
     
     const handleLogout = () => {
-        if (activeSession?._id) {
-            api.put(`/sessions/${activeSession._id}/persist`);
-        }
         localStorage.clear();
         router.push('/auth/login');
     };
@@ -368,11 +344,11 @@ export default function PlaygroundPage() {
             setSessions(remainingSessions);
             if (activeSession?._id === sessionIdToDelete) {
                 if (remainingSessions.length > 0) {
-                    await activateSession(remainingSessions[0]);
+                    setActiveSession(remainingSessions[0]);
                 } else {
                     const newSession = await handleNewSession(false);
                     if (newSession) {
-                        await activateSession(newSession);
+                        setActiveSession(newSession);
                     } else {
                         setActiveSession(null);
                     }
@@ -425,7 +401,7 @@ export default function PlaygroundPage() {
         </button>
     );
 
-    if (loading) {
+    if (authStatus === 'checking' || dataLoading) {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
     }
     
@@ -549,7 +525,7 @@ export default function PlaygroundPage() {
                     <div className={`flex-grow overflow-y-auto pr-2 space-y-2 transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
                         {sessions.map((session) => (
                             <div key={session._id} className="group relative">
-                                <div onClick={() => activateSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                <div onClick={() => setActiveSession(session)} className={`block w-full text-left p-3 rounded-md cursor-pointer transition-colors ${activeSession?._id === session._id ? 'bg-blue-600 text-white' : 'bg-gray-700 hover:bg-gray-600'}`}>
                                     {editingSessionId === session._id ? (
                                         <input
                                             type="text"
