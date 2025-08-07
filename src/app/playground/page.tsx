@@ -43,33 +43,34 @@ interface SelectedElement {
 
 // --- Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
-    const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const componentRef = useRef<HTMLDivElement>(null);
+  const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const componentRef = useRef<HTMLDivElement>(null);
 
-    useEffect(() => {
-        try {
-            const rawCode = jsxCode.trim();
-            const transformedResult = transform(rawCode, {
-                presets: ['react', 'typescript'],
-                filename: 'component.tsx',
-            });
-            if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
+  useEffect(() => {
+    try {
+      const rawCode = jsxCode.trim();
+      const transformedResult = transform(rawCode, {
+        presets: ['react', 'typescript'],
+        filename: 'component.tsx',
+      });
+      if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
+      
+      const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
+      const Component = factory(React);
 
-            const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
-            const Component = factory(React);
-
-            if (!Component || (typeof Component !== 'function' && typeof Component !== 'object')) {
-                throw new Error('The evaluated code did not produce a valid React component.');
-            }
-            setComponentToRender(() => Component);
-            setError(null);
-        } catch (err: any) {
-            console.error("Error rendering component preview:", err);
-            setError(err.message || String(err));
-            setComponentToRender(null);
-        }
-    }, [jsxCode]);
+      if (!Component || (typeof Component !== 'function' && typeof Component !== 'object')) {
+          throw new Error('The evaluated code did not produce a valid React component.');
+      }
+      setComponentToRender(() => Component);
+      setError(null);
+    } catch (err: unknown) { 
+      console.error("Error rendering component preview:", err);
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+      setComponentToRender(null);
+    }
+  }, [jsxCode]);
 
     useEffect(() => {
         if (componentRef.current) {

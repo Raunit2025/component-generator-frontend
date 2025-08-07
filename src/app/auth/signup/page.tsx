@@ -78,7 +78,8 @@ export default function SignupPage() {
             if (axios.isAxiosError(err)) {
                 if (err.response) {
                     if (err.response.status === 422) {
-                        const errorMessages = err.response.data.errors.map((error: any) => Object.values(error)[0]).join(' ');
+                        // FIX: Changed `any` to a more specific type
+                        const errorMessages = err.response.data.errors.map((error: { [key: string]: string }) => Object.values(error)[0]).join(' ');
                         setError(errorMessages);
                     } else {
                         setError(err.response.data?.message || 'Signup failed. Please try again.');
