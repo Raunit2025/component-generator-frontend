@@ -10,104 +10,121 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, X, PanelLeftClose, PanelRightClose, Pencil } from 'lucide-react';
+import { Expand, Minimize, LogOut, Plus, Copy, Download, Trash2, X, PanelLeftClose, PanelRightClose, Pencil, LoaderCircle } from 'lucide-react';
+
 
 
 // --- Interfaces ---
 interface ChatMessage {
-  role: 'user' | 'assistant';
-  content: string;
+    role: 'user' | 'assistant';
+    content: string;
 }
 
 interface Session {
-  _id: string;
-  name: string;
-  jsxCode: string;
-  cssCode: string;
-  chatHistory: ChatMessage[];
+    _id: string;
+    name: string;
+    jsxCode: string;
+    cssCode: string;
+    chatHistory: ChatMessage[];
 }
 
 interface SelectedElement {
-  elementId: string;
-  tagName: string;
-  styles: {
-    backgroundColor: string;
-    color: string;
-    fontSize: string;
-    padding: string;
-    textContent: string | null;
-  };
+    elementId: string;
+    tagName: string;
+    styles: {
+        backgroundColor: string;
+        color: string;
+        fontSize: string;
+        padding: string;
+        textContent: string | null;
+    };
 }
 
 
 // --- Component Preview ---
 const ComponentPreview = ({ jsxCode, cssCode }: { jsxCode: string; cssCode: string }) => {
-  const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const componentRef = useRef<HTMLDivElement>(null);
+    const [ComponentToRender, setComponentToRender] = useState<React.ComponentType | null>(null);
+    const [error, setError] = useState<string | null>(null);
+    const componentRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    try {
-      const rawCode = jsxCode.trim();
-      const transformedResult = transform(rawCode, {
-        presets: ['react', 'typescript'],
-        filename: 'component.tsx',
-      });
-      if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
-      
-      const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
-      const Component = factory(React);
+    useEffect(() => {
+        try {
+            const rawCode = jsxCode.trim();
+            const transformedResult = transform(rawCode, {
+                presets: ['react', 'typescript'],
+                filename: 'component.tsx',
+            });
+            if (!transformedResult?.code) throw new Error("Babel transformation returned empty code.");
 
-      if (!Component || (typeof Component !== 'function' && typeof Component !== 'object')) {
-          throw new Error('The evaluated code did not produce a valid React component.');
-      }
-      setComponentToRender(() => Component);
-      setError(null);
-    } catch (err) {
-      console.error("Error rendering component preview:", err);
-      setError(String(err));
-      setComponentToRender(null);
+            const factory = new Function('React', `${transformedResult.code}\nreturn GeneratedComponent;`);
+            const Component = factory(React);
+
+            if (!Component || (typeof Component !== 'function' && typeof Component !== 'object')) {
+                throw new Error('The evaluated code did not produce a valid React component.');
+            }
+            setComponentToRender(() => Component);
+            setError(null);
+        } catch (err: any) {
+            console.error("Error rendering component preview:", err);
+            setError(err.message || String(err));
+            setComponentToRender(null);
+        }
+    }, [jsxCode]);
+
+    useEffect(() => {
+        if (componentRef.current) {
+            componentRef.current.querySelectorAll('*').forEach((el, index) => {
+                const uniqueId = `element-${index}`;
+                (el as HTMLElement).dataset.id = uniqueId;
+                el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const existingStyle = window.getComputedStyle(el);
+                    const styles = {
+                        backgroundColor: existingStyle.backgroundColor,
+                        color: existingStyle.color,
+                        fontSize: existingStyle.fontSize,
+                        padding: existingStyle.padding,
+                        textContent: el.textContent,
+                    };
+                    window.parent.postMessage({
+                        type: 'element-click',
+                        elementId: uniqueId,
+                        tagName: (el as HTMLElement).tagName,
+                        styles: styles,
+                    }, '*');
+                });
+            });
+        }
+    }, [ComponentToRender]);
+
+
+    if (error) {
+        return (
+            <div style={{
+                color: '#f87171',
+                backgroundColor: '#450a0a',
+                border: '2px solid #ef4444',
+                borderRadius: '8px',
+                padding: '1.5rem',
+                fontFamily: 'monospace',
+                whiteSpace: 'pre-wrap',
+                margin: '1rem'
+            }}>
+                <strong style={{ color: '#fca5a5', display: 'block', marginBottom: '0.75rem', fontSize: '1.1rem' }}>
+                    Render Error
+                </strong>
+                {error}
+            </div>
+        );
     }
-  }, [jsxCode]);
 
-  useEffect(() => {
-    if (componentRef.current) {
-      componentRef.current.querySelectorAll('*').forEach((el, index) => {
-        const uniqueId = `element-${index}`;
-        (el as HTMLElement).dataset.id = uniqueId;
-        el.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const existingStyle = window.getComputedStyle(el);
-          const styles = {
-            backgroundColor: existingStyle.backgroundColor,
-            color: existingStyle.color,
-            fontSize: existingStyle.fontSize,
-            padding: existingStyle.padding,
-            textContent: el.textContent,
-          };
-          window.parent.postMessage({
-            type: 'element-click',
-            elementId: uniqueId,
-            tagName: (el as HTMLElement).tagName,
-            styles: styles,
-          }, '*');
-        });
-      });
-    }
-  }, [ComponentToRender]);
-
-
-  if (error) {
-    return <div style={{ color: '#ef4444', padding: '1rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap' }}>{error}</div>;
-  }
-
-  return (
-    <>
-      <style>{cssCode}</style>
-      {ComponentToRender && <div ref={componentRef}><ComponentToRender /></div>}
-    </>
-  );
+    return (
+        <>
+            <style>{cssCode}</style>
+            {ComponentToRender && <div ref={componentRef}><ComponentToRender /></div>}
+        </>
+    );
 };
 
 
@@ -129,7 +146,7 @@ const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selecte
                     <X size={18} />
                 </button>
             </div>
-            
+
             <div>
                 <label className="block text-sm font-medium text-gray-400">Text Content</label>
                 <input
@@ -139,7 +156,7 @@ const PropertyPanel = ({ selectedElement, onDeselect, onStyleChange }: { selecte
                     className="w-full mt-1 p-2 bg-gray-900 border border-gray-700 rounded-md"
                 />
             </div>
-            
+
             <div>
                 <label className="block text-sm font-medium text-gray-400">Background Color</label>
                 <input
@@ -187,14 +204,14 @@ export default function PlaygroundPage() {
             });
             const newSession = response.data;
             setSessions(prev => [newSession, ...prev]);
-            if(setActive) setActiveSession(newSession);
+            if (setActive) setActiveSession(newSession);
             return newSession;
         } catch (err) {
             console.error('Failed to create new session:', err);
             return null;
         }
     }, []);
-    
+
     // Effect to check authentication status on component mount
     useEffect(() => {
         const accessToken = localStorage.getItem('accessToken');
@@ -228,11 +245,11 @@ export default function PlaygroundPage() {
                         setSessions(response.data);
                         setActiveSession(response.data[0]);
                     } else {
-                      await handleNewSession(true);
+                        await handleNewSession(true);
                     }
                 } catch (err: unknown) {
                     console.error('Failed to fetch sessions:', err);
-                     if (axios.isAxiosError(err) && err.response?.status === 401) {
+                    if (axios.isAxiosError(err) && err.response?.status === 401) {
                         setAuthStatus('unauthenticated');
                     }
                 } finally {
@@ -242,7 +259,7 @@ export default function PlaygroundPage() {
             fetchSessions();
         }
     }, [authStatus, router, handleNewSession]);
-    
+
     const handleAPIMessage = useCallback(async (promptToSend: string, targetElement: SelectedElement | null) => {
         if (!promptToSend.trim() || !activeSession || isGenerating) return;
 
@@ -251,7 +268,7 @@ export default function PlaygroundPage() {
         setActiveSession(prev => prev ? { ...prev, chatHistory: [...prev.chatHistory, newUserMessage] } : null);
         setIsGenerating(true);
         setActiveSideTab('chat');
-        
+
         const payload: { prompt: string, targetElement?: SelectedElement } = { prompt: promptToSend };
         if (targetElement) {
             payload.targetElement = targetElement;
@@ -297,7 +314,7 @@ export default function PlaygroundPage() {
     useEffect(() => {
         scrollToBottom();
     }, [activeSession?.chatHistory, isGenerating]);
-    
+
     const handleLogout = () => {
         localStorage.clear();
         router.push('/auth/login');
@@ -308,7 +325,7 @@ export default function PlaygroundPage() {
         handleAPIMessage(prompt, selectedElement);
         setPrompt('');
     };
-    
+
     const handleCopyCode = () => {
         if (!activeSession) return;
         const codeToCopy = activeTab === 'jsx' ? activeSession.jsxCode : activeSession.cssCode;
@@ -390,7 +407,7 @@ export default function PlaygroundPage() {
             setFullscreenView(view);
         }
     };
-    
+
     const FullscreenButton = ({ view }: { view: 'preview' | 'code' }) => (
         <button
             onClick={() => handleFullscreenToggle(view)}
@@ -404,7 +421,7 @@ export default function PlaygroundPage() {
     if (authStatus === 'checking' || dataLoading) {
         return <div className="flex h-screen items-center justify-center bg-gray-900 text-white">Loading your creative space...</div>;
     }
-    
+
     const previewPanel = (
         <div className="flex-1 flex flex-col bg-gray-800 rounded-lg shadow h-full">
             <div className="flex justify-between items-center p-4 border-b border-gray-700">
@@ -417,7 +434,7 @@ export default function PlaygroundPage() {
                     head={<><script src="https://cdn.tailwindcss.com"></script></>}
                     className="w-full h-full border-0"
                 >
-                   {activeSession && <ComponentPreview jsxCode={activeSession.jsxCode} cssCode={activeSession.cssCode} />}
+                    {activeSession && <ComponentPreview jsxCode={activeSession.jsxCode} cssCode={activeSession.cssCode} />}
                 </Frame>
             </div>
         </div>
@@ -452,18 +469,18 @@ export default function PlaygroundPage() {
             </div>
         </div>
     );
-    
+
     const sidePanel = (
-         <div className="lg:w-96 flex flex-col bg-gray-800 rounded-lg shadow shrink-0">
+        <div className="lg:w-96 flex flex-col bg-gray-800 rounded-lg shadow shrink-0">
             <div className="flex border-b border-gray-700">
-                <button 
-                    onClick={() => setActiveSideTab('chat')} 
+                <button
+                    onClick={() => setActiveSideTab('chat')}
                     className={`flex-1 py-3 font-semibold ${activeSideTab === 'chat' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Chat
                 </button>
-                <button 
-                    onClick={() => setActiveSideTab('properties')} 
+                <button
+                    onClick={() => setActiveSideTab('properties')}
                     className={`flex-1 py-3 font-semibold ${activeSideTab === 'properties' ? 'border-b-2 border-blue-500 text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Properties
@@ -485,25 +502,30 @@ export default function PlaygroundPage() {
                             </div>
                         )}
                     </div>
-                    <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700">
+                    <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-700 relative">
                         <input
                             type="text"
                             value={prompt}
                             onChange={(e) => setPrompt(e.target.value)}
                             placeholder={
-                                isGenerating ? "Please wait..." 
-                                : selectedElement ? `Editing <${selectedElement.tagName.toLowerCase()}>...`
-                                : "Describe your component..."
+                                isGenerating ? "Please wait..."
+                                    : selectedElement ? `Editing <${selectedElement.tagName.toLowerCase()}>...`
+                                        : "Describe your component..."
                             }
                             disabled={isGenerating || !activeSession}
-                            className="w-full p-3 border border-gray-700 bg-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                            className="w-full p-3 pr-10 border border-gray-700 bg-gray-900 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
                         />
+                        {isGenerating && (
+                            <div className="absolute right-6 top-1/2 -translate-y-1/2">
+                                <LoaderCircle size={20} className="animate-spin text-gray-400" />
+                            </div>
+                        )}
                     </form>
                 </div>
             ) : (
-                 <div key="properties-panel" className="flex-1 animate-fadeIn overflow-y-auto">
-                    <PropertyPanel 
-                        selectedElement={selectedElement} 
+                <div key="properties-panel" className="flex-1 animate-fadeIn overflow-y-auto">
+                    <PropertyPanel
+                        selectedElement={selectedElement}
                         onDeselect={() => setSelectedElement(null)}
                         onStyleChange={(stylePrompt) => handleAPIMessage(stylePrompt, selectedElement)}
                     />
@@ -554,14 +576,14 @@ export default function PlaygroundPage() {
                         ))}
                     </div>
                     <button onClick={handleLogout} className={`mt-4 flex items-center justify-center w-full bg-gray-700 text-gray-300 py-2 px-4 rounded-md hover:bg-red-600 hover:text-white transition-colors transition-opacity duration-200 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}>
-                       <LogOut size={18} className="mr-2" />
-                       Log Out
+                        <LogOut size={18} className="mr-2" />
+                        Log Out
                     </button>
                 </aside>
                 <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="bg-gray-800 h-12 self-center rounded-r-lg px-1 text-gray-400 hover:bg-gray-700 hover:text-white">
                     {isSidebarCollapsed ? <PanelRightClose size={20} /> : <PanelLeftClose size={20} />}
                 </button>
-                 <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-w-0">
+                <main className="flex-1 flex flex-col lg:flex-row gap-4 p-4 min-w-0">
                     <div className="flex flex-col flex-1 gap-4 min-w-0 min-h-0">
                         {previewPanel}
                         {codePanel}
@@ -569,7 +591,7 @@ export default function PlaygroundPage() {
                     {sidePanel}
                 </main>
             </div>
-            
+
             {fullscreenView === 'preview' && (
                 <div className={`fixed inset-0 z-50 p-4 ${isExitingFullscreen ? 'animate-zoomOut' : 'animate-zoomIn'}`}>
                     {previewPanel}

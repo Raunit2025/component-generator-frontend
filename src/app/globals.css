@@ -3,28 +3,20 @@
 :root {
   --background: 240 10% 3.9%;
   --foreground: 0 0% 98%;
-
   --card: 240 10% 3.9%;
   --card-foreground: 0 0% 98%;
-
   --popover: 240 10% 3.9%;
   --popover-foreground: 0 0% 98%;
-
   --primary: 0 0% 98%;
   --primary-foreground: 240 5.9% 10%;
-
   --secondary: 240 3.7% 15.9%;
   --secondary-foreground: 0 0% 98%;
-
   --muted: 240 3.7% 15.9%;
   --muted-foreground: 240 5% 64.9%;
-
   --accent: 240 3.7% 15.9%;
   --accent-foreground: 0 0% 98%;
-
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
-
   --border: 240 3.7% 15.9%;
   --input: 240 3.7% 15.9%;
   --ring: 240 4.9% 83.9%;
@@ -35,25 +27,6 @@ body {
   color: hsl(var(--foreground));
 }
 
-/* Animated Gradient Background */
-.animated-gradient {
-  background: linear-gradient(-45deg, #111827, #1f2937, #374151, #4b5563);
-  background-size: 400% 400%;
-  animation: gradient 15s ease infinite;
-}
-
-@keyframes gradient {
-  0% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
 /* Page Load Animations */
 @keyframes fadeIn {
   from { opacity: 0; }
@@ -61,74 +34,35 @@ body {
 }
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fadeIn {
-  animation: fadeIn 1s ease-in-out forwards;
-}
-
-.animate-fadeInUp {
-  animation: fadeInUp 0.8s ease-in-out forwards;
-}
+.animate-fadeIn { animation: fadeIn 1s ease-in-out forwards; }
+.animate-fadeInUp { animation: fadeInUp 0.8s ease-in-out forwards; opacity: 0; animation-fill-mode: forwards; }
 
 .animation-delay-200 { animation-delay: 200ms; }
 .animation-delay-400 { animation-delay: 400ms; }
 .animation-delay-600 { animation-delay: 600ms; }
+.animation-delay-800 { animation-delay: 800ms; }
 
-@keyframes zoomIn {
-  from {
-    opacity: 0;
-    transform: scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
+/* Floating Animation */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-20px); }
+  100% { transform: translateY(0px); }
 }
 
-@keyframes zoomOut {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.95);
-  }
+/* Scrollbar Styles */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: hsl(var(--secondary) / 0.5); border-radius: 10px; }
+::-webkit-scrollbar-thumb { background: hsl(var(--muted-foreground) / 0.5); border-radius: 10px; border: 1px solid hsl(var(--secondary)); }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.8); }
+
+@keyframes spinner {
+  to { transform: rotate(360deg); }
 }
 
-.animate-zoomIn {
-  animation: zoomIn 0.2s ease-out forwards;
-}
-
-.animate-zoomOut {
-  animation: zoomOut 0.2s ease-in forwards;
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: hsl(var(--secondary) / 0.5);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.5);
-  border-radius: 10px;
-  border: 1px solid hsl(var(--secondary));
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.8);
+.animate-spinner {
+  animation: spinner 0.6s linear infinite;
 }
